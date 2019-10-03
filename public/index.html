@@ -7,6 +7,7 @@
         <meta name="description" content="Opensource firebase paste-bin">
         <meta name="author" content="Firebase Developers Discord">
         <title>Firebin</title>
+        <link rel="shortcut icon" href="assets/firebin.ico"/>
         <!-- Bootstrap core CSS -->
         <link href="bootstrap/css/bootstrap.css" rel="stylesheet">
         <!-- Custom styles for this template -->
@@ -21,9 +22,9 @@
             <nav class="bg-dark navbar navbar-expand-md navbar-dark fixed-top">
                 <img src="assets/firebin.png" width="40" height="40">
                 <a class="navbar-brand" href="#">Firebin</a>
-                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+                <!--<button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
-                </button>
+                </button>-->
                 <div class="collapse navbar-collapse" id="navbarsExampleDefault">
                     <!--<ul class="navbar-nav mr-auto">-->
                     <!--<li class="nav-item active">
@@ -51,12 +52,11 @@
                 </div>
             </nav>
             <div class="container">
-                <div class="form-group">Paste here
-                    <br>
-                    <textarea class="align-top font-weight-light text-monospace h-auto" rows="3" id="editor" style="margin-top: 0px; margin-bottom: 0px;"></textarea>
+                <div class="form-group">
+                    <textarea class="align-top font-weight-light text-monospace h-auto CodeMirror" rows="3" id="editor" style="margin-top: 0px; margin-bottom: 0px;"></textarea>
                 </div>
                 <button type="button" class="btn btn-light">Publish</button>
-                <small style="padding-left: 1rem;">Firebin only stores documents for 30 days, Highlight rows to indicate lines of importance.&nbsp;</small>
+                <small style="padding-left: 1rem; padding-right: 1rem;">Firebin only stores documents for 30 days</small>
             </div>
         </div>         
         <!-- /container -->

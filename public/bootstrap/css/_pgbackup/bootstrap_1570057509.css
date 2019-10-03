@@ -8580,6 +8580,10 @@ button.bg-dark:focus {
     height: 100% !important;
 }
 
+.h-auto {
+    height: auto !important;
+}
+
 .mw-100 {
     max-width: 100% !important;
 }

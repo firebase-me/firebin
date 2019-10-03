@@ -4,10 +4,9 @@
     font-family: monospace;
     color: black;
     direction: ltr;
-    height: calc(100vh - 180px);
+    height: calc(100vh - 200px);
     width: 100%;
-    min-height: 26px;
-    min-width: 250px;
+    min-height: 20px;
 }
 
 /* PADDING */
