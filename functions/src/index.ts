@@ -33,20 +33,43 @@ db.settings({ timestampsInSnapshots: true });
 // https://medium.com/google-developer-experts/automatically-delete-your-firebase-storage-files-from-firestore-with-cloud-functions-for-firebase-36542c39ba0d
 // https://www.reddit.com/r/Firebase/comments/85pm3r/firestore_security_how_do_i_use_document_wildcard/
 exports.scheduledCleanup = functions.pubsub.schedule('every day 00:00').onRun(async (context) => {
-  const batchSize = 1000;
+  const batchSize = 100;
   let collectionRef = await db.collection('bin').where('created', "<", new Date().getDate() - 30);
   let query = collectionRef.orderBy('created').limit(batchSize);
   return new Promise((resolve, reject) => {
     deleteQueryBatch(db, query, batchSize, resolve, reject);
-  });
+  })
+  .catch(e => console.log(e));
 });
 
-exports.addTimestamp = functions.firestore.document('bin/{docId}')
-  .onCreate((event, context) => {
-    const doc = admin.firestore().collection('bin').doc(String(context.params.docId));
-    return doc.update({ created: Date.now() });
-  });
+exports.bakeDocument = functions.firestore.document('bin/{docId}').onCreate((event, context) => {
+  const doc = admin.firestore().collection('bin').doc(String(context.params.docId));
+  doc.update({ created: Date.now() })
+  .catch(e => console.log(e));;
+  doc.get()
+    .then(data => {
+      const owner = data.get("owner");
+      const title = data.get("title");
+      const reference = data.id;
+      const meta = { "history": admin.firestore.FieldValue.arrayUnion(reference + "/" + title) };
+      if (owner)
+        admin.firestore().collection('profile').doc(owner).update(meta)
+          .catch(e => console.log(e));
+    })
+    .catch(e => console.log(e));
+});
 
+// On Document Delete, remove document from owner history
+exports.purgeDocument = functions.firestore.document('bin/{docId}')
+  .onDelete(DataSnapshot => {
+    const owner = DataSnapshot.get("owner");
+    const title = DataSnapshot.get("title");
+    if (owner) {
+      const meta = { "history": admin.firestore.FieldValue.arrayRemove(DataSnapshot.id + "/" + title) };
+      admin.firestore().collection('profile').doc(owner).update(meta)
+        .catch(e => console.log(e));;
+    };
+  });
 
 // exports.paste = functions.https.onCall((data, context) => {
 //   // is this call valid?
@@ -73,15 +96,15 @@ exports.addTimestamp = functions.firestore.document('bin/{docId}')
 //     }).catch(function (error: any) {
 //       console.log(error)// Handle error
 //     });
-  //if(context.auth.token
+//if(context.auth.token
 
-  // https://firebase.google.com/docs/firestore/manage-data/add-data#add_a_document
-  //   db.collection('cities').add(document)
-  //     .then(ref => {
-  //       console.log('Added document with ID: ', ref.id);
-  //     });
-  // else
-  //   
+// https://firebase.google.com/docs/firestore/manage-data/add-data#add_a_document
+//   db.collection('cities').add(document)
+//     .then(ref => {
+//       console.log('Added document with ID: ', ref.id);
+//     });
+// else
+//   
 // });
 // https://www.youtube.com/watch?v=Z87OZtIYC_0
 // https://firebase.google.com/docs/reference/rest/database
@@ -122,6 +145,12 @@ function deleteQueryBatch(firestore: FirebaseFirestore.Firestore, query: Firebas
       // Delete documents in a batch
       const batch = firestore.batch();
       snapshot.docs.forEach((doc) => {
+        const owner = doc.get("owner");
+        if (owner) {
+          const meta = { "history": admin.firestore.FieldValue.arrayRemove(doc.ref) };
+          admin.firestore().collection('profile').doc(owner).update(meta)
+            .catch(e => console.log(e));
+        }
         batch.delete(doc.ref);
       });
 

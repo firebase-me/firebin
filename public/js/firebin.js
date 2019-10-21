@@ -5,21 +5,75 @@
 
 var editor; // reference to editor app
 var app; // reference to vue app
-var code; // string formatted paste
-var raw; // is the url requesting a raw code page?
-var reading; // is this an existing document?
-var pasteUID;
+var code = ""; // string formatted paste
+var raw = false; // is the url requesting a raw code page?
+var reading; // null else document id?
+var InitialOwner = null;
+var InitialSyntax = 'default';
+var InitialTheme = 'default';
+var userHistory;
+var Styles = [
+    { name: "Default", syntax: "default" },
+    // CUSTOM SYNTAX
+    { name: "ActionScript", syntax: "actionscript" },
+    { name: "C++", syntax: "c_cpp" },
+    { name: "C#", syntax: "csharp" },
+    { name: "Css", syntax: "css" },
+    { name: "Html", syntax: "html" },
+    { name: "JavaScript", syntax: "javascript" },
+    { name: "Json", syntax: "json" },
+    { name: "Svg", syntax: "svg" },
+    { name: "Text", syntax: "text" },
+    { name: "TypeScript", syntax: "typescript" },
+    { name: "Xml", syntax: "xml" },
+    { name: "Yaml", syntax: "yaml" },
+];
+var Themes = [
+    {
+        name: "Default",
+        group: [
+            { name: "Default", theme: "default" }
+        ]
+    },
+    {
+        name: "Light themes",
+        group: [
+            { name: "Chrome", theme: "chrome" },
+            { name: "Crimson", theme: "crimson_editor" },
+            { name: "Dawn", theme: "dawn" },
+            { name: "Eclipse", theme: "eclipse" },
+            { name: "GitHub", theme: "github" },
+            { name: "Solarized", theme: "solarized_light" },
+            { name: "SQL Server", theme: "sqlserver" },
+        ]
+    },
+    {
+        name: "Dark themes",
+        group: [
+            { name: "Ambiance", theme: "ambiance" },
+            { name: "Dracula", theme: "dracula" },
+            { name: "Green", theme: "gob" },
+            { name: "Merbivore", theme: "merbivore" },
+            { name: "Solarized", theme: "solarized_dark" },
+            { name: "Terminal", theme: "terminal" },
+        ]
+    }
+];
 
-$(document).ready(function () {
+$(document).ready(async function () {
     // const firebase = require("firebase");
     // require("firebase/firestore");
     if (!firebase) return;
 
-    if (window.location.pathname.endsWith("/raw")) {
-        raw = true;
-    }
-    else {
-        raw = false;
+    if (window.location.pathname.length > 1) {
+        if (window.location.pathname.endsWith("/raw")) {
+            raw = true;
+            document.getElementById("cache").value = await FetchDocument(window.location.pathname);
+            return;
+        }
+        else {
+            code = await FetchDocument(window.location.pathname);
+        }
     }
 
     const db = firebase.firestore();
@@ -28,35 +82,81 @@ $(document).ready(function () {
         el: '#main',
         data: {
             emptyPaste: true,
-            username: 'Guest',
-            canEdit: true,
+            username: null,
             submit: 'Submit',
             login: 'Sign in',
-            showLogin: false
+            showLogin: false,
+            showProfile: false,
+            isOwner: false,
+            OwnerID: InitialOwner,
+            selectedSyntax: InitialSyntax,
+            selectedTheme: InitialTheme,
+            history: [],
+            themes: Themes,
+            styles: Styles,
         },
         methods: {
             async submitpaste() {
                 const collectionRef = db.collection('bin');
+                const NewTitle = (document.getElementById("title").value.length > 0) ? document.getElementById("title").value : "Untitled";
                 const paste = {
                     code: editor.getValue(),
                     owner: firebase.auth().currentUser.uid,
-                    syntax: ""
+                    syntax: document.getElementById("syntax").value,
+                    title: NewTitle
                 };
-                await collectionRef.add(paste)
-                    .then(ref => {
-                        const newUrl = window.location.protocol + window.location.domain + ref.id;
-                        window.location = newUrl;
 
-                        navigator.permissions.query({ name: "clipboard-write" }).then(result => {
-                            if (result.state == "granted" || result.state == "prompt") {
-                                navigator.clipboard.writeText(newUrl);
-                                alert("Copied the url: " + newUrl);
-                                window.location.assign(newUrl);
-                            }
+                if (!reading) {
+                    await collectionRef.add(paste)
+                        .then(ref => {
+                            const newUrl = [window.location.protocol, "", window.location.hostname, ref.id].join("/");
+                            window.location = newUrl;
+                            this.ownerID = firebase.auth().currentUser.uid;
+
+                            window.location.assign(newUrl);
+                            navigator.permissions.query({ name: "clipboard-write" }).then(result => {
+                                if (result.state == "granted" || result.state == "prompt") {
+                                    navigator.clipboard.writeText(newUrl);
+                                }
+                            });
+                            alert("Copied: " + newUrl);
+                        })
+                        .catch(e => alert(e.message));
+                }
+                else {
+                    await collectionRef.doc(reading).update(paste)
+                        .then(() => {
+                            const newUrl = [window.location.protocol, "", window.location.hostname, reading].join("/");
+                            window.location = newUrl;
+
+                            this.ownerID = firebase.auth().currentUser.uid;
+
+                            window.location.assign(newUrl);
+                            navigator.permissions.query({ name: "clipboard-write" }).then(result => {
+                                if (result.state == "granted" || result.state == "prompt") {
+                                    navigator.clipboard.writeText(newUrl);
+                                }
+                            });
+                            // alert("Copied: " + newUrl);
+                        })
+                        .catch(e => {
+                            console.log(e.message);
+                            return;
                         });
-                    })
-                    .catch(e => alert(e.message));
+
+                }
                 // return;
+            },
+            updateOwner() {
+                if (!firebase.auth().currentUser)
+                    this.isOwner = false;
+                if (this.OwnerID == firebase.auth().currentUser.uid)
+                    this.isOwner = true;
+                else this.isOwner = false;
+            },
+            updateHistory() {
+                this.history = userHistory;
+                console.log(this.history);
             },
             authstatechange(user) {
                 if (user) {
@@ -72,12 +172,12 @@ $(document).ready(function () {
                         this.username = user.providerData[0].email;
                     else
                         this.username = "Unidentified User";
-                    console.log(user.providerData);
                 }
                 else {
                     this.login = "Sign in";
                     this.username = 'Unauthorised';
                 }
+                app.updateOwner();
             },
             SignInWithGoogle() {
                 var user = firebase.auth().currentUser;
@@ -121,11 +221,23 @@ $(document).ready(function () {
             },
 
             SignInOrOut() {
-                if (firebase.auth().currentUser.isAnonymous)
+                if (firebase.auth().currentUser && firebase.auth().currentUser.isAnonymous)
                     this.showLogin = true;
-                else
+                else {
                     firebase.auth().signOut();
-            }
+                }
+            },
+            updateTheme() {
+                this.selectedTheme = document.getElementById("theme").value;
+                refreshEditorStyle();
+            },
+            updateSyntax() {
+                this.selectedSyntax = document.getElementById("syntax").value;
+                refreshEditorStyle();
+            },
+            toggleProfile() {
+                this.showProfile = !this.showProfile;
+            },
         }
     });
     // firebase.auth().onAuthStateChanged(function(user) {
@@ -138,10 +250,35 @@ $(document).ready(function () {
 
     firebase.auth().onAuthStateChanged(function (user) {
         if (user) {
+            var docRef = db.collection("profile").doc(firebase.auth().currentUser.uid);
+
+            docRef.get().then(function (doc) {
+                if (doc.exists) {
+                    document.getElementById("theme").value = doc.get("theme");
+                    console.log(doc.data().history);
+                    app.updateTheme();
+                    var _history = doc.data().history || [];
+                    userHistory = [];
+                    for (let index = 0; index < _history.length; index++) {
+                        const split = _history[index].split("/", 1);
+                        userHistory.push({ name: _history[index].substr(split[0].length + 1), uid: split[0] });
+                    }
+                    app.updateHistory();
+                    // console.log("Document data:", doc.data());
+                } else {
+                    // doc.data() will be undefined in this case
+                    console.log("No such document!");
+                }
+            }).catch(function (error) {
+                console.log("Error getting document:", error);
+            });
+
+            history = "";
             app.authstatechange(user);
         } else {
             firebase.auth().signInAnonymously().catch(function (error) {
                 alert(error.message);
+                app.updateOwner();
             });
         }
     });
@@ -149,11 +286,14 @@ $(document).ready(function () {
 
 
 
+
     editor = ace.edit(document.getElementById("aceEditor"));
-    editor.setTheme("ace/theme/gruvbox");
-    editor.session.setMode("ace/mode/text");
+    refreshEditorStyle();
+
     editor.setFontSize("13px");
     editor.renderer.setScrollMargin(10, 10);
+    editor.session.setValue(code);
+
 
     editor.setOptions({
         // editor options
@@ -210,38 +350,77 @@ $(document).ready(function () {
         // mode: 'ace/mode/text' // string: path to language mode 
     });
 
+
     // https://stackoverflow.com/questions/26037443/ace-editor-load-new-content-dynamically-clear-old-content-with-new-one
     // PRELOAD PASTE FOR TEXT AREA
-    if (window.location.pathname.length > 1) {
-        var path = window.location.pathname.replace("/raw", "");
-        var url = "https://firestore.googleapis.com/v1beta1/" +
-            "projects/firebin-1/databases/(default)/documents/bin" + path;
-        fetch(url)
-            .then(response => response.json())
-            .then(paste => {
-                if (paste.error) { }
-                // document.getElementById("cache").textContent = paste.error.code + ": "+ paste.error.message;
-                else {
-                    // document.getElementById("cache").textContent = paste.fields.code.stringValue.replace(/\n/g, '<br>\n');
-                    code = paste.fields.code.stringValue; //.value = // JSON.stringify()
-                    document.getElementById("cache").value = code;
-                    editor.session.setValue(code);
-                    // https://github.com/ajaxorg/ace/issues/1886
-                }
-            });
-    }
+    // if (window.location.pathname.length > 0) {
+    //     if (window.location.pathname.endsWith("/raw"))
+    //         raw = true;
+    //     var path = window.location.pathname.replace("/raw", "");
+    //     var url = "https://firestore.googleapis.com/v1beta1/" +
+    //         "projects/firebin-1/databases/(default)/documents/bin" + path;
+    //     fetch(url)
+    //         .then(response => response.json())
+    //         .then(paste => {
+    //             if (paste.error) { }
+    //             // document.getElementById("cache").textContent = paste.error.code + ": "+ paste.error.message;
+    //             else {
+    //                 // document.getElementById("cache").textContent = paste.fields.code.stringValue.replace(/\n/g, '<br>\n');
+    //                 code = paste.fields.code.stringValue; //.value = // JSON.stringify()
+    //                 if (raw)
+    //                     document.getElementById("cache").value = code;//"TESTING RAW PAST\nNew Line!";
+    //                 else
+    //                     editor.session.setValue(code);
+    //                 // https://github.com/ajaxorg/ace/issues/1886
+    //             }
+    //         });
+    // }
 
 
-    //   editor.session.setValue(document.getElementById("cache").value);
-    // if(window.location.pathname.endsWith("/raw")){
-    //     document.getElementById("cache").hidden = false;
-    //     document.getElementById("main").hidden = true;
-    //     var cm = $('.CodeMirror')[0].CodeMirror;
-    //     $(cm.getWrapperElement()).hide();
-    // }
-    // else{
-    //     // https://codemirror.net/doc/manual.html#usage
-    //     document.getElementById("editor").value = document.getElementById("cache").textContent;
-    //     document.getElementById("cache").hidden = true;
-    // }
 });
+
+async function refreshEditorStyle() {
+
+
+    // SET THEME FROM USER DATA
+    if (!app.selectedTheme || app.selectedTheme == "default" || app.selectedTheme == "")
+        editor.setTheme("ace/theme/gruvbox");
+    else
+        editor.setTheme("ace/theme/" + app.selectedTheme);
+
+    // SET THEME FROM PASTE DATA
+    if (!app.selectedSyntax || app.selectedSyntax == "default" || app.selectedSyntax == "")
+        editor.session.setMode("ace/mode/markdown");
+    else
+        editor.session.setMode("ace/mode/" + app.selectedSyntax);
+
+}
+
+async function FetchDocument(id) {
+    var doc = id.replace("/raw", "");
+    var url = "https://firestore.googleapis.com/v1beta1/" +
+        "projects/firebin-1/databases/(default)/documents/bin" + doc;
+    var final = await fetch(url)
+        .then(response => response.json())
+        .then(paste => {
+            if (paste.error) {
+                alert("404: Invalid or Expired ID");
+                return "";
+            }
+            else {
+                document.getElementById("title").value = paste.fields.title.stringValue || "Untitled";
+                InitialOwner = paste.fields.owner.stringValue || "";
+                InitialSyntax = paste.fields.syntax.stringValue || "default";
+                return paste.fields.code.stringValue;
+            }
+        })
+        .catch(e => {
+            alert("Catch: " + e.message);
+            InitialOwner = "";
+            return "";
+        });
+    reading = doc;
+
+    return final;
+
+}
