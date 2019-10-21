@@ -9,6 +9,7 @@ var code = ""; // string formatted paste
 var raw = false; // is the url requesting a raw code page?
 var reading; // null else document id?
 var InitialOwner = null;
+var InitialTitle;
 var InitialSyntax = 'default';
 var InitialTheme = 'default';
 var userHistory;
@@ -73,6 +74,7 @@ $(document).ready(async function () {
         }
         else {
             code = await FetchDocument(window.location.pathname);
+            // document.getElementById("title").value = InitialTitle;
         }
     }
 
@@ -156,7 +158,6 @@ $(document).ready(async function () {
             },
             updateHistory() {
                 this.history = userHistory;
-                console.log(this.history);
             },
             authstatechange(user) {
                 if (user) {
@@ -255,7 +256,6 @@ $(document).ready(async function () {
             docRef.get().then(function (doc) {
                 if (doc.exists) {
                     document.getElementById("theme").value = doc.get("theme");
-                    console.log(doc.data().history);
                     app.updateTheme();
                     var _history = doc.data().history || [];
                     userHistory = [];
@@ -293,6 +293,9 @@ $(document).ready(async function () {
     editor.setFontSize("13px");
     editor.renderer.setScrollMargin(10, 10);
     editor.session.setValue(code);
+    
+    if(InitialTitle)
+    document.getElementById("title").value = InitialTitle;
 
 
     editor.setOptions({
@@ -408,7 +411,8 @@ async function FetchDocument(id) {
                 return "";
             }
             else {
-                document.getElementById("title").value = paste.fields.title.stringValue || "Untitled";
+                
+                InitialTitle = paste.fields.title.stringValue ||  "Untitled";
                 InitialOwner = paste.fields.owner.stringValue || "";
                 InitialSyntax = paste.fields.syntax.stringValue || "default";
                 return paste.fields.code.stringValue;

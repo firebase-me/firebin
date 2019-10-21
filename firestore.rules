@@ -19,9 +19,9 @@ service cloud.firestore {
 			return 	request.auth != null &&
 					request.resource.data.code is string &&
 					request.resource.data.code.size() > 0 &&
-					request.resource.data.code.size() < 750000 &&
+					request.resource.data.code.size() < 1000000 &&
 					request.resource.data.syntax.size() < 20 &&
-					request.resource.data.title.size() < 30 &&
+					request.resource.data.title.size() < 25 &&
 					request.resource.data.owner == request.auth.uid;
 		}
   	}
