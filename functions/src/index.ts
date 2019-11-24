@@ -39,25 +39,26 @@ exports.scheduledCleanup = functions.pubsub.schedule('every day 00:00').onRun(as
   return new Promise((resolve, reject) => {
     deleteQueryBatch(db, query, batchSize, resolve, reject);
   })
-  .catch(e => console.log(e));
-});
-
-exports.bakeDocument = functions.firestore.document('bin/{docId}').onCreate((event, context) => {
-  const doc = admin.firestore().collection('bin').doc(String(context.params.docId));
-  doc.update({ created: Date.now() })
-  .catch(e => console.log(e));;
-  doc.get()
-    .then(data => {
-      const owner = data.get("owner");
-      const title = data.get("title");
-      const reference = data.id;
-      const meta = { "history": admin.firestore.FieldValue.arrayUnion(reference + "/" + title) };
-      if (owner)
-        admin.firestore().collection('profile').doc(owner).update(meta)
-          .catch(e => console.log(e));
-    })
     .catch(e => console.log(e));
 });
+
+exports.bakeDocument = functions.firestore.document('bin/{docId}')
+  .onCreate((event, context) => {
+    const doc = admin.firestore().collection('bin').doc(String(context.params.docId));
+    doc.update({ created: Date.now() })
+      .catch(e => console.log(e));;
+    doc.get()
+      .then(data => {
+        const owner = data.get("owner");
+        const title = data.get("title");
+        const reference = data.id;
+        const meta = { "history": admin.firestore.FieldValue.arrayUnion(reference + "/" + title) };
+        if (owner)
+          admin.firestore().collection('profile').doc(owner).update(meta)
+            .catch(e => console.log(e));
+      })
+      .catch(e => console.log(e));
+  });
 
 // On Document Delete, remove document from owner history
 exports.purgeDocument = functions.firestore.document('bin/{docId}')
@@ -71,6 +72,19 @@ exports.purgeDocument = functions.firestore.document('bin/{docId}')
     };
   });
 
+exports.updateDocument = functions.firestore.document('bin/{docId}')
+  .onUpdate(DataSnapshot => {
+    const docID = DataSnapshot.before.id;
+    const owner = DataSnapshot.before.get("owner");
+    if (owner && owner == docID) {
+      const oldMeta = { "history": admin.firestore.FieldValue.arrayRemove(DataSnapshot.before.id + "/" + DataSnapshot.before.get("title")) };
+      admin.firestore().collection('profile').doc(owner).update(oldMeta)
+        .catch(e => console.log(e));
+      const newMeta = { "history": admin.firestore.FieldValue.arrayRemove(DataSnapshot.after.id + "/" + DataSnapshot.after.get("title")) };
+      admin.firestore().collection('profile').doc(owner).update(newMeta)
+        .catch(e => console.log(e));
+    };
+  });
 // exports.paste = functions.https.onCall((data, context) => {
 //   // is this call valid?
 //   if (context.auth == null || data.paste == null || data.doc == null)

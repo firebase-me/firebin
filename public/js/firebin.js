@@ -1,3 +1,4 @@
+/*jshint esversion: 8 */
 // Vue.component('modal', {
 //     template: '#login-template'
 // });
@@ -8,11 +9,11 @@ var app; // reference to vue app
 var code = ""; // string formatted paste
 var raw = false; // is the url requesting a raw code page?
 var reading; // null else document id?
-var InitialOwner = null;
+var InitialOwner = "";
 var InitialTitle;
 var InitialSyntax = 'default';
 var InitialTheme = 'default';
-var userHistory;
+var userHistory = [];
 var Styles = [
     { name: "Default", syntax: "default" },
     // CUSTOM SYNTAX
@@ -80,6 +81,8 @@ $(document).ready(async function () {
 
     const db = firebase.firestore();
 
+
+    var ec = new evercookie();
     app = new Vue({
         el: '#main',
         data: {
@@ -99,6 +102,31 @@ $(document).ready(async function () {
         },
         methods: {
             async submitpaste() {
+                // Verify user Auth or sign in Anon
+                // is user not signed in? sign in as guest
+                if (!firebase.auth().currentUser) {
+                    // user is not signed in, check for Guest ID
+                    // else create new
+                    var token = await ec.get("firebin_token");
+                    console.log(uid);
+
+                    if (uid)
+                        firebase.auth().signInWithCustomToken(uid)
+                            .catch(function (error) {
+                                alert(error.message);
+                                app.updateOwner();
+                                return;
+                            });
+                    else
+                        await firebase.auth().signInAnonymously()
+                            .catch(function (error) {
+                                alert(error.message);
+                                app.updateOwner();
+                                return;
+                            });
+                }
+
+                // user is valid, create paste
                 const collectionRef = db.collection('bin');
                 const NewTitle = (document.getElementById("title").value.length > 0) ? document.getElementById("title").value : "Untitled";
                 const paste = {
@@ -108,6 +136,7 @@ $(document).ready(async function () {
                     title: NewTitle
                 };
 
+                // is user creating new or updating an existing paste
                 if (!reading) {
                     await collectionRef.add(paste)
                         .then(ref => {
@@ -122,24 +151,44 @@ $(document).ready(async function () {
                                 }
                             });
                             alert("Copied: " + newUrl);
+                            // this.openPaste(ref.id);
+                            userHistory.push([ref.id, paste.title].join("/"));
                         })
                         .catch(e => alert(e.message));
                 }
                 else {
-                    await collectionRef.doc(reading).update(paste)
-                        .then(() => {
-                            const newUrl = [window.location.protocol, "", window.location.hostname, reading].join("/");
-                            window.location = newUrl;
+                    await collectionRef.doc(reading)
+                        .update(paste)
+                        .then(async () => {
+                            console.log("Update History");
 
-                            this.ownerID = firebase.auth().currentUser.uid;
+                            // https://firebase.google.com/docs/firestore/manage-data/add-data#update_elements_in_an_array
+                            // UPDATE HISTORY
+                            for (i = 0; i < userHistory.length; i++) {
+                                if (userHistory[i].uid == reading) {
+                                    // var oldTitle = userHistory[i].name;
+                                    // // CLIENT SIDE
+                                    userHistory[i].name = NewTitle;
+                                    // // SERVER SIDE
+                                    // var historyRef = await db.collection('profile')
+                                    //     .doc(firebase.auth().currentUser.uid);
 
-                            window.location.assign(newUrl);
-                            navigator.permissions.query({ name: "clipboard-write" }).then(result => {
-                                if (result.state == "granted" || result.state == "prompt") {
-                                    navigator.clipboard.writeText(newUrl);
+                                    // historyRef.update({
+                                    //     history: firebase.firestore.FieldValue.arrayRemove([reading, oldTitle].join("/"))
+                                    // })
+                                    //     .catch(e => {
+                                    //         console.log(e.message);
+                                    //     });
+                                    // historyRef.update({
+                                    //     history: firebase.firestore.FieldValue.arrayUnion([reading, NewTitle].join("/"))
+                                    // })
+                                    //     .catch(e => {
+                                    //         console.log(e.message);
+                                    //     });
+                                    return;
                                 }
-                            });
-                            // alert("Copied: " + newUrl);
+                            }
+                            return;
                         })
                         .catch(e => {
                             console.log(e.message);
@@ -147,19 +196,37 @@ $(document).ready(async function () {
                         });
 
                 }
-                // return;
+                this.updateHistory();
+                // const newUrl = [window.location.protocol, "", window.location.hostname, reading].join("/");
+                // window.location = newUrl;
+
+                // window.location.assign(newUrl);
+                // navigator.permissions.query({ name: "clipboard-write" }).then(result => {
+                //     if (result.state == "granted" || result.state == "prompt") {
+                //         navigator.clipboard.writeText(newUrl);
+                //     }
+                // });
             },
             updateOwner() {
-                if (!firebase.auth().currentUser)
-                    this.isOwner = false;
-                if (this.OwnerID == firebase.auth().currentUser.uid)
+                if (!reading || firebase.auth().currentUser && this.OwnerID == firebase.auth().currentUser.uid) { // firebase.auth().currentUser.isAnonymous
                     this.isOwner = true;
-                else this.isOwner = false;
+                }
+                else {
+                    this.isOwner = false;
+                }
+                editor.setReadOnly(!this.isOwner);
+            },
+            openPaste(id) {
+                if (id)
+                    if (window.location.hostname == "localhost" || window.location.hostname == "127.0.0.1")
+                        window.location.assign(window.location.protocol + "//" + window.location.hostname + ":" + window.location.port + "/" + id);
+                    else window.location.assign(window.location.protocol + "//" + window.location.hostname + window.location.port + "/" + id);
             },
             updateHistory() {
                 this.history = userHistory;
             },
-            authstatechange(user) {
+            authstatechange() {
+                const user = firebase.auth().currentUser;
                 if (user) {
                     this.showLogin = false;
                     this.login = "Sign out";
@@ -176,7 +243,7 @@ $(document).ready(async function () {
                 }
                 else {
                     this.login = "Sign in";
-                    this.username = 'Unauthorised';
+                    this.username = 'Guest';
                 }
                 app.updateOwner();
             },
@@ -241,16 +308,11 @@ $(document).ready(async function () {
             },
         }
     });
-    // firebase.auth().onAuthStateChanged(function(user) {
-    //     if (user) {
-    //       // User is signed in.
-    //     } else {
-    //       // No user is signed in.
-    //     }
-    //   });
 
-    firebase.auth().onAuthStateChanged(function (user) {
+    firebase.auth().onAuthStateChanged(async function (user) {
         if (user) {
+            if (user.isAnonymous)
+                ec.set("firebin_token", await user.getIdToken(true));
             var docRef = db.collection("profile").doc(firebase.auth().currentUser.uid);
 
             docRef.get().then(function (doc) {
@@ -258,15 +320,12 @@ $(document).ready(async function () {
                     document.getElementById("theme").value = doc.get("theme");
                     app.updateTheme();
                     var _history = doc.data().history || [];
-                    userHistory = [];
                     for (let index = 0; index < _history.length; index++) {
                         const split = _history[index].split("/", 1);
                         userHistory.push({ name: _history[index].substr(split[0].length + 1), uid: split[0] });
                     }
                     app.updateHistory();
-                    // console.log("Document data:", doc.data());
                 } else {
-                    // doc.data() will be undefined in this case
                     console.log("No such document!");
                 }
             }).catch(function (error) {
@@ -274,29 +333,23 @@ $(document).ready(async function () {
             });
 
             history = "";
-            app.authstatechange(user);
-        } else {
-            firebase.auth().signInAnonymously().catch(function (error) {
-                alert(error.message);
-                app.updateOwner();
-            });
         }
+        app.authstatechange();
     });
 
 
-
-
-
     editor = ace.edit(document.getElementById("aceEditor"));
-    refreshEditorStyle();
+
+    if (InitialTitle) {
+        document.getElementById("title").value = InitialTitle;
+        editor.session.setValue(code);
+    }
+
 
     editor.setFontSize("13px");
     editor.renderer.setScrollMargin(10, 10);
-    editor.session.setValue(code);
-    
-    if(InitialTitle)
-    document.getElementById("title").value = InitialTitle;
 
+    refreshEditorStyle();
 
     editor.setOptions({
         // editor options
@@ -354,33 +407,8 @@ $(document).ready(async function () {
     });
 
 
-    // https://stackoverflow.com/questions/26037443/ace-editor-load-new-content-dynamically-clear-old-content-with-new-one
-    // PRELOAD PASTE FOR TEXT AREA
-    // if (window.location.pathname.length > 0) {
-    //     if (window.location.pathname.endsWith("/raw"))
-    //         raw = true;
-    //     var path = window.location.pathname.replace("/raw", "");
-    //     var url = "https://firestore.googleapis.com/v1beta1/" +
-    //         "projects/firebin-1/databases/(default)/documents/bin" + path;
-    //     fetch(url)
-    //         .then(response => response.json())
-    //         .then(paste => {
-    //             if (paste.error) { }
-    //             // document.getElementById("cache").textContent = paste.error.code + ": "+ paste.error.message;
-    //             else {
-    //                 // document.getElementById("cache").textContent = paste.fields.code.stringValue.replace(/\n/g, '<br>\n');
-    //                 code = paste.fields.code.stringValue; //.value = // JSON.stringify()
-    //                 if (raw)
-    //                     document.getElementById("cache").value = code;//"TESTING RAW PAST\nNew Line!";
-    //                 else
-    //                     editor.session.setValue(code);
-    //                 // https://github.com/ajaxorg/ace/issues/1886
-    //             }
-    //         });
-    // }
-
-
 });
+
 
 async function refreshEditorStyle() {
 
@@ -400,10 +428,9 @@ async function refreshEditorStyle() {
 }
 
 async function FetchDocument(id) {
-    var doc = id.replace("/raw", "");
-    var url = "https://firestore.googleapis.com/v1beta1/" +
-        "projects/firebin-1/databases/(default)/documents/bin" + doc;
-    var final = await fetch(url)
+    var doc = id.replace("/raw", "").replace("/", "");
+    var url = "https://firestore.googleapis.com/v1beta1/projects/firebin-1/databases/(default)/documents/bin/";
+    var final = await fetch(url + doc)
         .then(response => response.json())
         .then(paste => {
             if (paste.error) {
@@ -411,8 +438,8 @@ async function FetchDocument(id) {
                 return "";
             }
             else {
-                
-                InitialTitle = paste.fields.title.stringValue ||  "Untitled";
+
+                InitialTitle = paste.fields.title.stringValue || "Untitled";
                 InitialOwner = paste.fields.owner.stringValue || "";
                 InitialSyntax = paste.fields.syntax.stringValue || "default";
                 return paste.fields.code.stringValue;
@@ -427,4 +454,34 @@ async function FetchDocument(id) {
 
     return final;
 
+}
+
+{
+    var ec = new evercookie();
+
+    // set a cookie "id" to "12345"
+    // usage: ec.set(key, value)
+    ec.set("id", "12345");
+
+    // retrieve a cookie called "id" (simply)
+    ec.get("id", function (value) { alert("Cookie value is " + value); });
+
+    // or use a more advanced callback function for getting our cookie
+    // the cookie value is the first param
+    // an object containing the different storage methods
+    // and returned cookie values is the second parameter
+    function getCookie(best_candidate, all_candidates) {
+        alert("The retrieved cookie is: " + best_candidate + "\n" +
+            "You can see what each storage mechanism returned " +
+            "by looping through the all_candidates object.");
+
+        for (var item in all_candidates)
+            document.write("Storage mechanism " + item +
+                " returned: " + all_candidates[item] + "<br>");
+    }
+    ec.get("id", getCookie);
+
+    // we look for "candidates" based off the number of "cookies" that
+    // come back matching since it's possible for mismatching cookies.
+    // the best candidate is most likely the correct one
 }
