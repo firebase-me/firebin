@@ -6,6 +6,8 @@
 
 var editor; // reference to editor app
 var app; // reference to vue app
+var es;
+
 var code = ""; // string formatted paste
 var raw = false; // is the url requesting a raw code page?
 var reading; // null else document id?
@@ -82,7 +84,10 @@ $(document).ready(async function () {
     const db = firebase.firestore();
 
 
-    var ec = new evercookie();
+    // INIT PERSISTANCE
+    // ec = new evercookie();
+
+
     app = new Vue({
         el: '#main',
         data: {
@@ -107,25 +112,26 @@ $(document).ready(async function () {
                 if (!firebase.auth().currentUser) {
                     // user is not signed in, check for Guest ID
                     // else create new
-                    var token = await ec.get("firebin_token");
-                    console.log(uid);
+                    // var token = ec.get("firebin_token");
+                    const token = getToken("firebin_token");
 
-                    if (uid)
-                        firebase.auth().signInWithCustomToken(uid)
-                            .catch(function (error) {
-                                alert(error.message);
-                                app.updateOwner();
-                                return;
-                            });
-                    else
-                        await firebase.auth().signInAnonymously()
-                            .catch(function (error) {
-                                alert(error.message);
-                                app.updateOwner();
-                                return;
-                            });
+                    // if (token)
+                    //     firebase.auth().signInWithCustomToken(token)
+                    //         .catch(function (error) {
+                    //             alert(error.message);
+                    //             app.updateOwner();
+                    //             return;
+                    //         });
+                    // else
+                    await firebase.auth().signInAnonymously()
+                        .catch(function (error) {
+                            alert(error.message);
+                            app.updateOwner();
+                            return;
+                        });
                 }
 
+                if (!firebase.auth().currentUser) return;
                 // user is valid, create paste
                 const collectionRef = db.collection('bin');
                 const NewTitle = (document.getElementById("title").value.length > 0) ? document.getElementById("title").value : "Untitled";
@@ -311,8 +317,10 @@ $(document).ready(async function () {
 
     firebase.auth().onAuthStateChanged(async function (user) {
         if (user) {
-            if (user.isAnonymous)
-                ec.set("firebin_token", await user.getIdToken(true));
+            if (user.isAnonymous) {
+                const newToken = await user.getIdToken(true);
+                setToken(newToken);
+            }
             var docRef = db.collection("profile").doc(firebase.auth().currentUser.uid);
 
             docRef.get().then(function (doc) {
@@ -331,9 +339,29 @@ $(document).ready(async function () {
             }).catch(function (error) {
                 console.log("Error getting document:", error);
             });
-
-            history = "";
         }
+        // else {
+        //     if (reading) {
+        //         const token = getToken("firebin_token");
+
+        //         console.log(token);
+
+        //         // if (token)
+        //         //     firebase.auth().signInWithCustomToken(token)
+        //         //         .catch(function (error) {
+        //         //             alert(error.message);
+        //         //             app.updateOwner();
+        //         //             return;
+        //         //         });
+        //         // else
+        //             // await firebase.auth().signInAnonymously()
+        //             //     .catch(function (error) {
+        //             //         alert(error.message);
+        //             //         app.updateOwner();
+        //             //         return;
+        //             //     });
+        //     }
+        // }
         app.authstatechange();
     });
 
@@ -438,7 +466,6 @@ async function FetchDocument(id) {
                 return "";
             }
             else {
-
                 InitialTitle = paste.fields.title.stringValue || "Untitled";
                 InitialOwner = paste.fields.owner.stringValue || "";
                 InitialSyntax = paste.fields.syntax.stringValue || "default";
@@ -456,32 +483,49 @@ async function FetchDocument(id) {
 
 }
 
-{
-    var ec = new evercookie();
+// {
+//     var ec = new evercookie();
 
-    // set a cookie "id" to "12345"
-    // usage: ec.set(key, value)
-    ec.set("id", "12345");
+//     // set a cookie "id" to "12345"
+//     // usage: ec.set(key, value)
+//     ec.set("id", "12345");
 
-    // retrieve a cookie called "id" (simply)
-    ec.get("id", function (value) { alert("Cookie value is " + value); });
+//     // retrieve a cookie called "id" (simply)
+//     ec.get("id", function (value) { alert("Cookie value is " + value); });
 
-    // or use a more advanced callback function for getting our cookie
-    // the cookie value is the first param
-    // an object containing the different storage methods
-    // and returned cookie values is the second parameter
-    function getCookie(best_candidate, all_candidates) {
-        alert("The retrieved cookie is: " + best_candidate + "\n" +
-            "You can see what each storage mechanism returned " +
-            "by looping through the all_candidates object.");
+//     // or use a more advanced callback function for getting our cookie
+//     // the cookie value is the first param
+//     // an object containing the different storage methods
+//     // and returned cookie values is the second parameter
+//     function getCookie(best_candidate, all_candidates) {
+//         alert("The retrieved cookie is: " + best_candidate + "\n" +
+//             "You can see what each storage mechanism returned " +
+//             "by looping through the all_candidates object.");
 
-        for (var item in all_candidates)
-            document.write("Storage mechanism " + item +
-                " returned: " + all_candidates[item] + "<br>");
-    }
-    ec.get("id", getCookie);
+//         for (var item in all_candidates)
+//             document.write("Storage mechanism " + item +
+//                 " returned: " + all_candidates[item] + "<br>");
+//     }
+//     ec.get("id", getCookie);
 
-    // we look for "candidates" based off the number of "cookies" that
-    // come back matching since it's possible for mismatching cookies.
-    // the best candidate is most likely the correct one
+//     // we look for "candidates" based off the number of "cookies" that
+//     // come back matching since it's possible for mismatching cookies.
+//     // the best candidate is most likely the correct one
+// }
+
+function setToken(token) {
+    // ec.set("firebin_token", newToken.token);
+    var exdate = new Date(Date.now());
+    exdate.setHours(exdate.getHours() + 2);
+    document.cookie = "firebin_token=" + token + "; expires=" + exdate.toUTCString();
+}
+
+function getToken(name) {
+    var cookies = document.cookie.split(";").trim();
+    cookies.forEach(element => {
+        if (element.beginsWith(name)) {
+            console.log(element.split(name + "=").pop());
+            return element.split(name + "=").pop();
+        }
+    });
 }
