@@ -323,7 +323,7 @@ $(document).ready(async function () {
             }
             var docRef = db.collection("profile").doc(firebase.auth().currentUser.uid);
 
-            docRef.get().then(function (doc) {
+            const doc = await docRef.get()
                 if (doc.exists) {
                     document.getElementById("theme").value = doc.get("theme");
                     app.updateTheme();
@@ -336,9 +336,6 @@ $(document).ready(async function () {
                 } else {
                     console.log("No such document!");
                 }
-            }).catch(function (error) {
-                console.log("Error getting document:", error);
-            });
         }
         // else {
         //     if (reading) {
